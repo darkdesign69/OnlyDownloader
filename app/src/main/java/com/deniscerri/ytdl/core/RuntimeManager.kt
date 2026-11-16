@@ -450,8 +450,15 @@ object RuntimeManager {
             )
         }
 
-        if (!usingCacheDir) {
-            request.addOption("--no-cache-dir")
+        // Keep yt-dlp's cache on for fetching too. With --no-cache-dir every fetch re-downloads the
+        // site's player/extractor data and re-solves signature challenges, which is very slow.
+        if (!request.hasOption("--cache-dir")) {
+            runCatching {
+                val cacheDir = File(FileUtil.getCacheYTDLPPath(App.instance)).apply { mkdirs() }
+                request.addOption("--cache-dir", cacheDir.absolutePath)
+            }.onFailure {
+                if (!usingCacheDir) request.addOption("--no-cache-dir")
+            }
         }
 
         return mutableListOf(pythonLocation.executable.absolutePath, ytdlpPath!!.absolutePath) + request.buildCommand()

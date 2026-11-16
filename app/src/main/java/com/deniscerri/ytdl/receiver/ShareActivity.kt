@@ -1,5 +1,7 @@
 package com.deniscerri.ytdl.receiver
 
+import com.deniscerri.ytdl.ui.downloadcard.SealStyleDownloadDialog
+import androidx.fragment.app.DialogFragment
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -198,9 +200,14 @@ class ShareActivity : BaseActivity() {
 
                     downloadCardViewModel.setResultItem(result)
                     downloadCardViewModel.setDownloadItem(null)
-                    val bundle = Bundle()
-                    bundle.putSerializable("type", downloadType)
-                    navController.setGraph(R.navigation.share_nav_graph, bundle)
+                    shareDownloadType = downloadType
+                    if (sharedPreferences.getBoolean("seal_style_popup", true) && downloadType != DownloadType.command) {
+                        // new Seal-style format selection page; falls back to the classic card when needed
+                        (supportFragmentManager.findFragmentByTag("sealStyle") as? DialogFragment)?.dismissAllowingStateLoss()
+                        SealStyleDownloadDialog().show(supportFragmentManager, "sealStyle")
+                    } else {
+                        openClassicDialog()
+                    }
                 }else{
                     Toast.makeText(this@ShareActivity, "${getString(R.string.downloading)} $inputQuery", Toast.LENGTH_SHORT).show()
 
@@ -216,6 +223,15 @@ class ShareActivity : BaseActivity() {
             }
         }
     }
+    private var shareDownloadType: DownloadType = DownloadType.video
+
+    /** Opens the classic download card (the original popup) */
+    fun openClassicDialog() {
+        val bundle = Bundle()
+        bundle.putSerializable("type", shareDownloadType)
+        navController.setGraph(R.navigation.share_nav_graph, bundle)
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         startActivity(Intent(this, MainActivity::class.java))
         super.onConfigurationChanged(newConfig)

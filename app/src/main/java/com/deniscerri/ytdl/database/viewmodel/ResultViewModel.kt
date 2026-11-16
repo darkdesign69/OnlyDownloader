@@ -5,6 +5,7 @@ import android.app.ActivityManager.RunningAppProcessInfo
 import android.app.Application
 import android.content.SharedPreferences
 import android.util.Log
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -56,6 +57,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import java.util.concurrent.CancellationException
 import kotlin.collections.filter
 
@@ -462,17 +465,36 @@ class ResultViewModel(private val application: Application) : AndroidViewModel(a
         updateResultDataJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 updatingData.value = true
-                parseQueriesImpl(listOf(res.url)) { result ->
-                    if (isActive) {
-                        updateResultData.value = result
+                // fail fast with the real reason if the yt-dlp runtime never started
+                RuntimeManager.initError?.let { throw it }
+                withTimeout(FETCH_TIMEOUT_MS) {
+                    parseQueriesImpl(listOf(res.url)) { result ->
+                        if (isActive) {
+                            updateResultData.value = result
+                        }
                     }
                 }
+            } catch (e: TimeoutCancellationException) {
+                showFetchError("Fetching timed out after ${FETCH_TIMEOUT_MS / 1000}s (runtime ready: ${RuntimeManager.initialized})")
             } catch (e: CancellationException) {
+            } catch (e: Throwable) {
+                e.printStackTrace()
+                showFetchError("Fetch failed: ${e.javaClass.simpleName}: ${e.message}")
             } finally {
                 updatingData.emit(false)
                 updatingData.value = false
 
             }
+        }
+    }
+
+    private val FETCH_TIMEOUT_MS = 90_000L
+
+    private suspend fun showFetchError(message: String) {
+        val text = if (message.length > 400) message.take(400) + "..." else message
+        Log.e("ResultViewModel", text)
+        withContext(Dispatchers.Main) {
+            Toast.makeText(application, text, Toast.LENGTH_LONG).show()
         }
     }
 
