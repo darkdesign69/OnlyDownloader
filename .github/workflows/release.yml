@@ -1,0 +1,72 @@
+name: Make Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag, for example v1.0.0'
+        required: true
+        default: 'v1.0.0'
+      prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: YTDLnis
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 17
+          cache: 'gradle'
+
+      - name: Prepare build files
+        run: |
+          touch local.properties keystore.properties
+          chmod +x ./gradlew
+
+      - name: Build APKs
+        run: ./gradlew assembleGithubDebug --warning-mode all
+
+      - name: Collect APKs
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -e
+          mkdir -p out
+          dir=app/build/outputs/apk/github/debug
+          for abi in arm64-v8a armeabi-v7a x86_64 x86 universal; do
+            f=$(ls "$dir"/*-"$abi"-debug-github.apk 2>/dev/null | head -n 1 || true)
+            if [ -n "$f" ]; then
+              cp "$f" "out/${APP_NAME}-${abi}-${TAG}.apk"
+            fi
+          done
+          ls -lh out
+          test -n "$(ls -A out)"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ env.APP_NAME }} ${{ inputs.tag }}
+          body: |
+            ${{ env.APP_NAME }} ${{ inputs.tag }}
+            Created by darkdesign69.
+            Most phones need the arm64-v8a file.
+          files: out/*.apk
+          prerelease: ${{ inputs.prerelease }}
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
